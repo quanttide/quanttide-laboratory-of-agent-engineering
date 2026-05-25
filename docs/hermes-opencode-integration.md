@@ -80,36 +80,36 @@ Hermes gateway: 将结果发回用户微信
 
 ---
 
-## 阶段二：OpenCode → Hermes（消息发送能力）
+## 阶段二：OpenCode → Hermes（消息发送能力，已实现 ✅）
 
 ### 目标
 
-OpenCode 通过调用 Hermes CLI 向微信等平台发送消息。
-
-### 流程
-
-```
-OpenCode 任务 → hermes chat -q "请给用户微信发消息: ..." → Hermes 通过 gateway 发送
-```
+OpenCode 通过调用 Hermes Gateway 的 Weixin API 向微信发送消息。
 
 ### 实现
 
-OpenCode 在需要推送通知时，通过 `Task` 或 `Bash` 工具调用 Hermes：
+创建了两个工具脚本：
+
+| 脚本 | 用途 | 调用方式 |
+|------|------|----------|
+| `tools/send-wechat` | Python 脚本，直接调用 Hermes 的 `send_weixin_direct` API | `python tools/send-wechat <消息>` |
+| `tools/wechat-send` | Bash 包装器，自动使用 Hermes venv | `./tools/wechat-send <消息>` |
+
+OpenCode 在需推送通知时，通过 Bash 工具调用：
 
 ```bash
-hermes chat -q "请给微信用户 {{user_id}} 发送消息：{{content}}" --quiet
+./tools/wechat-send "重构已完成，改动如下：..."
 ```
 
-### 示例
+### 实现细节
 
-```
-用户 (OpenCode CLI): 帮我重构这个文件，完成后微信通知我
-    ↓
-OpenCode: 执行重构
-    ↓
-OpenCode: → hermes chat -q "请给用户微信发送消息：重构已完成，改动如下：..."
-    ↓
-Hermes: 通过 gateway 发送微信消息
+`send-wechat` 使用 Hermes Gateway 内置的 `send_weixin_direct` 函数（`gateway/platforms/weixin.py`），通过 iLink Bot API 直发微信消息，不经过 Hermes 会话循环。
+
+### 验证
+
+```bash
+$ ./tools/wechat-send "我是opencode"
+OK: message sent to o9cq80zB-xxxxx@im.wechat
 ```
 
 ---
@@ -192,8 +192,17 @@ agent-inbox/
 | 消息路由 | Hermes Gateway 技能机制 |
 | 通知推送 | Hermes gateway 微信通道 |
 
+## 实现状态
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| 一：Hermes → OpenCode | ✅ 内置 | Hermes 已有 `opencode` built-in skill，通过 `opencode run` 调用 |
+| 二：OpenCode → Hermes | ✅ 已实现 | `tools/send-wechat` + `tools/wechat-send` 可直接发送微信消息 |
+| 三：双向委托协作 | ⏳ 待完善 | 需测试完整闭环（微信发指令 → OpenCode 执行 → 微信通知结果） |
+| 四：共享工作区 | 📋 可选 | 按需推进 |
+
 ## 下一步
 
-1. 实现阶段一 PoC：创建 opencode skill 并验证微信 → OpenCode 通路
-2. 验证阶段二：从 OpenCode 调用 hermes 发微信消息
+1. 测试 Hermes → OpenCode 方向：在微信中发送 `/opencode <任务>` 触发 OpenCode
+2. 测试完整闭环：微信发指令 → OpenCode 执行 → 微信通知结果
 3. 编写集成测试用例，覆盖双向调用场景

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# OpenCode → Hermes → WeChat 消息发送入口
+# 用法: ./tools/wechat-send <消息内容>
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo "$(dirname "$0")/..")"
+
+HERMES_PYTHON="$HOME/.hermes/hermes-agent/venv/bin/python3"
+
+if [ ! -f "$HERMES_PYTHON" ]; then
+    echo "ERROR: Hermes venv not found at $HERMES_PYTHON" >&2
+    exit 1
+fi
+
+unset ALL_PROXY all_proxy
+exec "$HERMES_PYTHON" "$(dirname "$0")/send-wechat" "$@"

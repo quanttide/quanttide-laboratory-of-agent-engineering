@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""
+Send a WeChat message via Hermes Gateway's Weixin platform.
+
+Usage:
+  ./tools/send-wechat <message> [--chat-id <id>]
+
+Requires Hermes Gateway running and WEIXIN_* env vars configured.
+"""
+
+import argparse
+import asyncio
+import os
+import sys
+
+HERMES_HOME = os.path.expanduser("~/.hermes")
+HERMES_AGENT_DIR = os.path.join(HERMES_HOME, "hermes-agent")
+VENV_DIR = os.path.join(HERMES_AGENT_DIR, "venv")
+
+sys.path.insert(0, HERMES_AGENT_DIR)
+
+parser = argparse.ArgumentParser(description="Send WeChat message via Hermes")
+parser.add_argument("message", help="Message text to send")
+parser.add_argument("--chat-id", default=None,
+                    help="WeChat chat ID (default: WEIXIN_HOME_CHANNEL from .env)")
+args = parser.parse_args()
+
+
+async def main():
+    from dotenv import load_dotenv
+    env_path = os.path.join(HERMES_HOME, ".env")
+    load_dotenv(env_path)
+
+    chat_id = args.chat_id or os.getenv("WEIXIN_HOME_CHANNEL", "")
+    if not chat_id:
+        print("ERROR: No chat_id provided and WEIXIN_HOME_CHANNEL not set", file=sys.stderr)
+        sys.exit(1)
+
+    from gateway.platforms.weixin import send_weixin_direct
+
+    result = await send_weixin_direct(
+        extra={},
+        token=None,
+        chat_id=chat_id,
+        message=args.message,
+    )
+
+    if result.get("success"):
+        print(f"OK: message sent to {chat_id}")
+        sys.exit(0)
+    else:
+        print(f"ERROR: {result.get('error', 'unknown error')}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
