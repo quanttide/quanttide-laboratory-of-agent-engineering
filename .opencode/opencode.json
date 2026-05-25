@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "hermes": {
+      "type": "local",
+      "command": ["hermes", "mcp", "serve"],
+      "enabled": true
+    }
+  }
+}
