@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# simulate — 模拟 Ponytail 一次性配置在多智能体中的传播
+#
+# 演示架构：
+#   ponytail 仓库（单一源头）
+#   ├── AGENTS.md                  ──→  Zed（符号链接）
+#   ├── hooks/ponytail-instructions.js  ──→  OpenCode（插件注入）
+#   └── skills/ponytail/SKILL.md   ──→  Hermes（skills 加载）
+#
+# 用法：
+#   ./simulate             查看当前各 agent 状态
+#   ./simulate <new-rule>  新增一条规则并同步到所有 agent
+
+set -euo pipefail
+
+PONYTAIL_REPO="${PONYTAIL_REPO:-/home/iguo/repos/ponytail}"
+SIM_DIR="$(cd "$(dirname "$0")" && pwd)/simulated"
+
+AGENTS=(
+  "Zed:zed/AGENTS.md:symlink → \$PONYTAIL_REPO/AGENTS.md"
+  "OpenCode:opencode/prompt.txt:plugin → getPonytailInstructions()"
+  "Hermes:hermes/SKILL.md:skills → \$PONYTAIL_REPO/skills/ponytail/SKILL.md"
+)
+
+info()  { printf "\033[36m%s\033[0m\n" "$*"; }
+ok()    { printf "\033[32m  ✓ %s\033[0m\n" "$*"; }
+fail()  { printf "\033[31m  ✗ %s\033[0m\n" "$*"; exit 1; }
+header() { printf "\n\033[1;33m%s\033[0m\n" "$*"; }
+
+cmd() {
+  info "  \$ $*"
+  "$@"
+}
+
+setup() {
+  mkdir -p "$SIM_DIR"/{zed,opencode,hermes}
+
+  # Zed: 符号链接
+  ln -sf "$PONYTAIL_REPO/AGENTS.md" "$SIM_DIR/zed/AGENTS.md" 2>/dev/null
+
+  # OpenCode: 调用真实插件注入函数
+  node -e "
+    const { getPonytailInstructions } = require('$PONYTAIL_REPO/hooks/ponytail-instructions.js');
+    require('fs').writeFileSync('$SIM_DIR/opencode/prompt.txt', getPonytailInstructions('full'));
+  " 2>/dev/null
+
+  # Hermes: 复制 SKILL.md
+  cp "$PONYTAIL_REPO/skills/ponytail/SKILL.md" "$SIM_DIR/hermes/SKILL.md" 2>/dev/null
+}
+
+status() {
+  header "当前状态：各 agent 从 ponytail 加载的内容"
+
+  for entry in "${AGENTS[@]}"; do
+    name="${entry%%:*}"
+    rest="${entry#*:}"
+    file="${rest%%:*}"
+    desc="${rest#*:}"
+    path="$SIM_DIR/$file"
+
+    echo
+    info "$name  ($desc)"
+    if [ -f "$path" ]; then
+      head -5 "$path"
+      echo "       ... ($(wc -l < "$path") 行)"
+    else
+      fail "$path 不存在"
+    fi
+  done
+}
+
+propagate() {
+  local rule="$1"
+
+  header "修改 ponytail 源头：新增规则"
+
+  # 1. 修改源头
+  echo "" >> "$PONYTAIL_REPO/AGENTS.md"
+  echo "$rule" >> "$PONYTAIL_REPO/AGENTS.md"
+  ok "ponytail/AGENTS.md 已更新"
+
+  # 2. 重新同步到各 agent
+  setup
+
+  header "验证各 agent 是否包含新规则"
+  for entry in "${AGENTS[@]}"; do
+    name="${entry%%:*}"
+    rest="${entry#*:}"
+    file="${rest%%:*}"
+    path="$SIM_DIR/$file"
+
+    if grep -Fq "$rule" "$path" 2>/dev/null; then
+      ok "$name 已包含新规则"
+    else
+      fail "$name 缺少新规则"
+    fi
+  done
+
+  header "同步完成。全部 agent 已生效。"
+}
+
+main() {
+  setup
+
+  if [ $# -eq 0 ]; then
+    status
+  else
+    propagate "$*"
+  fi
+}
+
+main "$@"
